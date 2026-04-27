@@ -1,30 +1,34 @@
 import React, { useState } from 'react'
 import { I } from '../components/icons'
-import { SEED, CATEGORIES, formatINRFull, formatDateShort, TODAY, timeAgo } from '../data/seed'
+import { useData } from '../lib/DataContext'
+import { CATEGORIES, formatINRFull, formatDateShort, timeAgo } from '../data/constants'
 
-export function entrySubtitle(e) {
+export function entrySubtitle(e, refs = {}) {
+  const { workerTypes = [], contractors = [], jcbOperators = [] } = refs
   if (e.category === 'nmr') {
-    const wt = SEED.workerTypes.find(w => w.id === e.details.worker_type_id)
-    return `${e.details.worker_count} \u00d7 ${wt ? wt.name : 'Workers'}`
+    const wt = workerTypes.find(w => w.id === e.details.worker_type_id)
+    const gender = e.details.worker_gender === 'female' ? ' (F)' : ''
+    return `${e.details.worker_count} \u00d7 ${wt ? wt.name : 'Workers'}${gender}`
   }
   if (e.category === 'jcb') {
-    const op = SEED.jcbOperators.find(o => o.id === e.details.operator_id)
+    const op = jcbOperators.find(o => o.id === e.details.operator_id)
     return `${e.details.hours}h JCB \u00b7 ${op ? op.name : ''}`
   }
   if (e.category === 'contractor_fee') {
-    const c = SEED.contractors.find(x => x.id === e.details.contractor_id)
+    const c = contractors.find(x => x.id === e.details.contractor_id)
     return c ? c.name : 'Contractor fee'
   }
   if (e.category === 'labor_contract') {
-    const c = SEED.contractors.find(x => x.id === e.details.contractor_id)
+    const c = contractors.find(x => x.id === e.details.contractor_id)
     return `${e.details.work_type} \u00b7 ${c ? c.name : ''}`
   }
   return e.details.description || 'General'
 }
 
 export function EntryRow({ entry, onClick, syncing, first, last, plotName }) {
+  const { workerTypes, contractors, jcbOperators } = useData()
   const cat = CATEGORIES[entry.category]
-  const subtitle = entrySubtitle(entry)
+  const subtitle = entrySubtitle(entry, { workerTypes, contractors, jcbOperators })
 
   return (
     <button
@@ -73,7 +77,8 @@ export function EntryRow({ entry, onClick, syncing, first, last, plotName }) {
   )
 }
 
-export default function HomeScreen({ project, entries, onAddExpense, onOpenEntry, onSwitchProject, onGoHistory, syncingIds }) {
+export default function HomeScreen({ project, entries, onAddExpense, onOpenEntry, onSwitchProject, onGoHistory, onLogout }) {
+  const { user, plotsByProject } = useData()
   const [filter, setFilter] = useState(null)
 
   const todayTotal = entries.reduce((s, e) => s + e.total_amount, 0)
@@ -86,7 +91,7 @@ export default function HomeScreen({ project, entries, onAddExpense, onOpenEntry
 
   const filtered = filter ? entries.filter(e => e.category === filter) : entries
   const recent = [...filtered].slice(0, 5)
-  const allPlots = SEED.plotsByProject[project.id]
+  const allPlots = plotsByProject[project.id] || []
   const filteredTotal = filter ? filtered.reduce((s, e) => s + e.total_amount, 0) : todayTotal
 
   return (
@@ -111,12 +116,15 @@ export default function HomeScreen({ project, entries, onAddExpense, onOpenEntry
               <I.ChevronDown size={13} style={{ color: 'hsl(var(--muted-foreground))' }}/>
             </div>
             <div style={{ fontSize: 11, color: 'hsl(var(--muted-foreground))' }}>
-              {SEED.user.name.split(' ')[0]} &bull; {formatDateShort(TODAY)}
+              {user?.name?.split(' ')[0]} &bull; {formatDateShort(new Date())}
             </div>
           </div>
         </button>
         <button className="btn btn-ghost btn-icon" aria-label="History" onClick={onGoHistory} style={{ height: 36, width: 36 }}>
           <I.History size={16}/>
+        </button>
+        <button className="btn btn-ghost btn-icon" aria-label="Logout" onClick={onLogout} style={{ height: 36, width: 36 }}>
+          <I.LogOut size={16}/>
         </button>
       </div>
 
@@ -211,7 +219,7 @@ export default function HomeScreen({ project, entries, onAddExpense, onOpenEntry
               key={e.id}
               entry={e}
               onClick={() => onOpenEntry(e)}
-              syncing={syncingIds.has(e.id)}
+              syncing={false}
               first={i === 0}
               last={i === recent.length - 1}
               plotName={allPlots.find(p => p.id === e.plot_id)?.name}

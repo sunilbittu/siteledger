@@ -1,21 +1,28 @@
 import React, { useState } from 'react'
 import { I } from '../components/icons'
 import { Button, Input, Field } from '../components/ui'
+import { supabase } from '../lib/supabase'
 
 export default function LoginScreen({ onLogin }) {
-  const [email, setEmail] = useState('rajesh@gmail.com')
-  const [password, setPassword] = useState('Site2026')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     setError('')
     if (!email.includes('@')) { setError('Enter a valid email'); return }
     if (password.length < 8) { setError('Password must be at least 8 characters'); return }
     setLoading(true)
-    setTimeout(() => { setLoading(false); onLogin(email, password) }, 700)
+    const { error: authError } = await supabase.auth.signInWithPassword({ email, password })
+    setLoading(false)
+    if (authError) {
+      setError(authError.message)
+      return
+    }
+    onLogin()
   }
 
   return (

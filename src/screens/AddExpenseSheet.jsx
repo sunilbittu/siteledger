@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react'
 import { I } from '../components/icons'
 import { Button, Input, Field, Segmented, Stepper, TopBar, SelectSheet, SelectField } from '../components/ui'
-import { SEED, CATEGORIES, PAY_MODES, formatINRFull } from '../data/seed'
+import { useData } from '../lib/DataContext'
+import { CATEGORIES, PAY_MODES, formatINRFull } from '../data/constants'
 import { entrySubtitle } from './HomeScreen'
 
 const CATEGORY_LIST = [
@@ -13,6 +14,7 @@ const CATEGORY_LIST = [
 ]
 
 function CategoryPicker({ onClose, onPick, todayEntries }) {
+  const { workerTypes, contractors, jcbOperators } = useData()
   const counts = {}
   todayEntries.forEach(e => { counts[e.category] = (counts[e.category] || 0) + 1 })
   const sorted = [...CATEGORY_LIST].sort((a, b) => (counts[b.id] || 0) - (counts[a.id] || 0))
@@ -51,7 +53,7 @@ function CategoryPicker({ onClose, onPick, todayEntries }) {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {entrySubtitle(last)}
+                {entrySubtitle(last, { workerTypes, contractors, jcbOperators })}
               </div>
               <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))', marginTop: 1 }}>
                 {CATEGORIES[last.category].label} &middot; pre-fills the form
@@ -117,7 +119,8 @@ function CategoryPicker({ onClose, onPick, todayEntries }) {
 }
 
 function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit }) {
-  const plots = SEED.plotsByProject[project.id]
+  const { plotsByProject, workerTypes, contractors, jcbOperators, workTypes } = useData()
+  const plots = plotsByProject[project.id] || []
   const pre = prefill && prefill.category === category ? prefill : null
   const [plotId, setPlotId] = useState(pre ? pre.plot_id : (category === 'general' ? plots.find(p => p.name === 'Site-wide')?.id : ''))
   const [paymentMode, setPaymentMode] = useState(pre ? pre.payment_mode : 'cash')
@@ -126,6 +129,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
 
   const preD = pre ? pre.details : {}
   const [workerTypeId, setWorkerTypeId] = useState(preD.worker_type_id || '')
+  const [workerGender, setWorkerGender] = useState(preD.worker_gender || 'male')
   const [workerCount, setWorkerCount] = useState(preD.worker_count || 1)
   const [wage, setWage] = useState(preD.wage_per_worker ? String(preD.wage_per_worker) : '')
   const [wageOverridden, setWageOverridden] = useState(!!preD.wage_overridden)
@@ -159,14 +163,25 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
     return 0
   }, [category, workerCount, wage, hours, hourlyRate, fee, tip, amount])
 
+  const getWageForGender = (wt, gender) => {
+    if (gender === 'female' && wt.default_wage_female != null) return wt.default_wage_female
+    return wt.default_wage
+  }
   const onPickWorkerType = (id) => {
     setWorkerTypeId(id)
-    const wt = SEED.workerTypes.find(w => w.id === id)
-    if (wt) { setWage(String(wt.default_wage)); setWageOverridden(false) }
+    const wt = workerTypes.find(w => w.id === id)
+    if (wt) { setWage(String(getWageForGender(wt, workerGender))); setWageOverridden(false) }
+  }
+  const onChangeGender = (g) => {
+    setWorkerGender(g)
+    if (workerTypeId && !wageOverridden) {
+      const wt = workerTypes.find(w => w.id === workerTypeId)
+      if (wt) setWage(String(getWageForGender(wt, g)))
+    }
   }
   const onPickOperator = (id) => {
     setOperatorId(id)
-    const op = SEED.jcbOperators.find(o => o.id === id)
+    const op = jcbOperators.find(o => o.id === id)
     if (op && op.default_hourly_rate) setHourlyRate(String(op.default_hourly_rate))
   }
 
@@ -202,7 +217,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
   const submit = () => {
     if (!validate()) return
     let details = {}
-    if (category === 'nmr') details = { worker_type_id: workerTypeId, worker_count: workerCount, wage_per_worker: parseFloat(wage), wage_overridden: wageOverridden }
+    if (category === 'nmr') details = { worker_type_id: workerTypeId, worker_gender: workerGender, worker_count: workerCount, wage_per_worker: parseFloat(wage), wage_overridden: wageOverridden }
     else if (category === 'jcb') details = { operator_id: operatorId, hours: parseFloat(hours), hourly_rate: parseFloat(hourlyRate) }
     else if (category === 'contractor_fee') details = { contractor_id: contractorId, fee: parseFloat(fee), tip: parseFloat(tip) || 0 }
     else if (category === 'labor_contract') details = { contractor_id: contractorId, work_type: workType, amount: parseFloat(amount), payment_stage: paymentStage }
@@ -215,8 +230,8 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
   }
 
   const contractorOptions = (() => {
-    if (category === 'contractor_fee') return SEED.contractors.filter(c => c.type === 'daily_fee' || c.type === 'both')
-    if (category === 'labor_contract') return SEED.contractors.filter(c => c.type === 'labor_contract' || c.type === 'both')
+    if (category === 'contractor_fee') return contractors.filter(c => c.type === 'daily_fee' || c.type === 'both')
+    if (category === 'labor_contract') return contractors.filter(c => c.type === 'labor_contract' || c.type === 'both')
     return []
   })()
 
@@ -245,17 +260,27 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
           <>
             <SelectField
               label="Worker type"
-              value={SEED.workerTypes.find(w => w.id === workerTypeId)?.name}
+              value={workerTypes.find(w => w.id === workerTypeId)?.name}
               placeholder="Select type"
               onClick={() => setOpenSelect('workerType')}
               error={errors.workerType}
             />
+            <Field label="Gender">
+              <Segmented
+                options={[
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
+                ]}
+                value={workerGender}
+                onChange={onChangeGender}
+              />
+            </Field>
             <Field label="Number of workers">
               <Stepper value={workerCount} onChange={setWorkerCount} min={1} max={200}/>
             </Field>
             <Field label="Wage per worker" hint={wageOverridden ? '(overridden)' : '(from master)'}>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>\u20b9</span>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>{'\u20b9'}</span>
                 <Input
                   type="number"
                   inputMode="decimal"
@@ -273,7 +298,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
           <>
             <SelectField
               label="Operator"
-              value={SEED.jcbOperators.find(o => o.id === operatorId)?.name}
+              value={jcbOperators.find(o => o.id === operatorId)?.name}
               placeholder="Select operator"
               onClick={() => setOpenSelect('operator')}
               error={errors.operator}
@@ -284,7 +309,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
               </Field>
               <Field label="Hourly rate" error={errors.rate}>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>\u20b9</span>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>{'\u20b9'}</span>
                   <Input type="number" inputMode="decimal" value={hourlyRate} onChange={e => setHourlyRate(e.target.value)} style={{ paddingLeft: 24 }} error={errors.rate}/>
                 </div>
               </Field>
@@ -304,13 +329,13 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <Field label="Fee" error={errors.fee}>
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>\u20b9</span>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>{'\u20b9'}</span>
                   <Input type="number" inputMode="decimal" value={fee} onChange={e => setFee(e.target.value)} style={{ paddingLeft: 24 }} error={errors.fee}/>
                 </div>
               </Field>
               <Field label="Tip" hint="optional">
                 <div style={{ position: 'relative' }}>
-                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>\u20b9</span>
+                  <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>{'\u20b9'}</span>
                   <Input type="number" inputMode="decimal" placeholder="0" value={tip} onChange={e => setTip(e.target.value)} style={{ paddingLeft: 24 }}/>
                 </div>
               </Field>
@@ -347,7 +372,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
             </Field>
             <Field label="Amount" error={errors.amount}>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>\u20b9</span>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>{'\u20b9'}</span>
                 <Input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={{ paddingLeft: 24 }} error={errors.amount}/>
               </div>
             </Field>
@@ -361,7 +386,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
             </Field>
             <Field label="Amount" error={errors.amount}>
               <div style={{ position: 'relative' }}>
-                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>\u20b9</span>
+                <span style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'hsl(var(--muted-foreground))', pointerEvents: 'none' }}>{'\u20b9'}</span>
                 <Input type="number" inputMode="decimal" value={amount} onChange={e => setAmount(e.target.value)} style={{ paddingLeft: 24 }} error={errors.amount}/>
               </div>
             </Field>
@@ -445,7 +470,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
       />
       <SelectSheet
         open={openSelect === 'workerType'} title="Worker type"
-        options={SEED.workerTypes.map(w => ({ value: w.id, label: w.name, hint: '\u20b9' + w.default_wage }))}
+        options={workerTypes.map(w => ({ value: w.id, label: w.name, hint: '\u20b9' + w.default_wage }))}
         value={workerTypeId}
         onChange={onPickWorkerType}
         onClose={() => setOpenSelect(null)}
@@ -458,7 +483,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
       />
       <SelectSheet
         open={openSelect === 'operator'} title="Operator"
-        options={SEED.jcbOperators.map(o => ({ value: o.id, label: o.name, hint: '\u20b9' + o.default_hourly_rate }))}
+        options={jcbOperators.map(o => ({ value: o.id, label: o.name, hint: '\u20b9' + o.default_hourly_rate }))}
         value={operatorId}
         onChange={onPickOperator}
         onClose={() => setOpenSelect(null)}
@@ -476,7 +501,7 @@ function CategoryForm({ project, category, prefill, onBack, onClose, onSubmit })
       />
       <SelectSheet
         open={openSelect === 'workType'} title="Work type"
-        options={SEED.workTypes.map(w => ({ value: w, label: w }))}
+        options={workTypes.map(w => ({ value: w, label: w }))}
         value={workType} onChange={setWorkType} onClose={() => setOpenSelect(null)}
       />
     </div>

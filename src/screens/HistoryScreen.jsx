@@ -1,12 +1,14 @@
 import React, { useMemo } from 'react'
-import { SEED, CATEGORIES, formatINRFull, formatDateShort } from '../data/seed'
+import { useData } from '../lib/DataContext'
+import { CATEGORIES, formatINRFull, formatDateShort } from '../data/constants'
 import { TopBar } from '../components/ui'
 import { EntryRow } from './HomeScreen'
 
 function dateHeader(dateStr) {
   const [y, m, d] = dateStr.split('-').map(Number)
   const date = new Date(y, m - 1, d)
-  const today = new Date(2026, 3, 26)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
   const dayMs = 86400000
   const diff = Math.round((today - date) / dayMs)
   if (diff === 0) return `Today \u00b7 ${formatDateShort(date)}`
@@ -15,7 +17,8 @@ function dateHeader(dateStr) {
 }
 
 export default function HistoryScreen({ project, allEntries, onBack, onOpenEntry }) {
-  const plots = SEED.plotsByProject[project.id]
+  const { plotsByProject } = useData()
+  const plots = plotsByProject[project.id] || []
 
   const groups = useMemo(() => {
     const byDate = {}
@@ -25,7 +28,7 @@ export default function HistoryScreen({ project, allEntries, onBack, onOpenEntry
     })
     return Object.keys(byDate).sort().reverse().map(d => ({
       date: d,
-      entries: byDate[d].sort((a, b) => b.created_at - a.created_at),
+      entries: byDate[d].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)),
       total: byDate[d].reduce((s, e) => s + e.total_amount, 0),
     }))
   }, [allEntries])

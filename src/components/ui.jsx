@@ -1,6 +1,6 @@
 import React from 'react'
 import { I } from './icons'
-import { CATEGORIES } from '../data/seed'
+import { CATEGORIES } from '../data/constants'
 
 export function Button({ variant = 'primary', size = 'md', className = '', children, ...rest }) {
   const cls = `btn btn-${variant} ${size === 'lg' ? 'btn-lg' : size === 'sm' ? 'btn-sm' : ''} ${className}`

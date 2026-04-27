@@ -1,7 +1,8 @@
 import React from 'react'
 import { I } from '../components/icons'
 import { Button, Chip, TopBar } from '../components/ui'
-import { SEED, CATEGORIES, formatINRFull, formatTime } from '../data/seed'
+import { useData } from '../lib/DataContext'
+import { CATEGORIES, formatINRFull, formatTime } from '../data/constants'
 import { entrySubtitle } from './HomeScreen'
 
 function DetailRow({ label, value, multiline }) {
@@ -21,14 +22,16 @@ function DetailRow({ label, value, multiline }) {
 }
 
 export default function EntryDetailScreen({ entry, plots, onClose, onEdit, onDelete }) {
+  const { user, workerTypes, contractors, jcbOperators } = useData()
   const cat = CATEGORIES[entry.category]
   const plotName = plots.find(p => p.id === entry.plot_id)?.name
-  const isOwner = entry.created_by === SEED.user.id
-  const now = new Date(2026, 3, 26, 12, 14, 0)
-  const locked = now > entry.locked_at
+  const isOwner = entry.created_by === user?.id
+  const now = new Date()
+  const lockedAt = new Date(entry.locked_at)
+  const locked = now > lockedAt
   const canEdit = isOwner && !locked
 
-  const lockedIn = entry.locked_at - now
+  const lockedIn = lockedAt - now
   const hoursLeft = Math.max(0, Math.floor(lockedIn / 3600 / 1000))
   const minsLeft = Math.max(0, Math.floor((lockedIn / 1000 / 60) % 60))
 
@@ -68,7 +71,7 @@ export default function EntryDetailScreen({ entry, plots, onClose, onEdit, onDel
             {formatINRFull(entry.total_amount)}
           </div>
           <div style={{ fontSize: 13, color: 'hsl(var(--muted-foreground))', marginTop: 2 }}>
-            {entrySubtitle(entry)}
+            {entrySubtitle(entry, { workerTypes, contractors, jcbOperators })}
           </div>
         </div>
 
@@ -122,7 +125,7 @@ export default function EntryDetailScreen({ entry, plots, onClose, onEdit, onDel
 
         <div style={{ marginTop: 18, fontSize: 12, color: 'hsl(var(--muted-foreground))', lineHeight: 1.6 }}>
           <div>Created by <strong style={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}>{entry.created_by_name}</strong></div>
-          <div>at {formatTime(entry.created_at)} &middot; {entry.created_at.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
+          <div>at {formatTime(entry.created_at)} &middot; {new Date(entry.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</div>
         </div>
       </div>
 
