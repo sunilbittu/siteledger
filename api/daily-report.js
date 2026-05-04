@@ -92,7 +92,7 @@ export default async function handler(req, res) {
 
     const { error: sendError } = await resend.emails.send({
       from: 'SiteLedger <onboarding@resend.dev>',
-      to: 'wilson4smiles@gmail.com',
+      to: 'pavanksunil@gmail.com',
       subject: `SiteLedger Daily Report — ${today} | ₹${formatINR(todayTotal)}`,
       html,
     })
